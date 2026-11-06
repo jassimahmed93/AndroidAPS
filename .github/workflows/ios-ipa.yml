@@ -1,0 +1,125 @@
+name: Build AAPSClient IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths: ['.github/workflows/ios-ipa.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aapsclient-ipa
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    env:
+      GRADLE_OPTS: -Dorg.gradle.workers.max=2
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: ipa-konan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml') }}
+
+      - name: Check Apple build tools
+        run: |
+          set -euo pipefail
+          uname -m
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          df -h .
+
+      - name: Test iOS client
+        run: |
+          set -euo pipefail
+          ./gradlew --console=plain --no-daemon --max-workers=2 \
+            :ios:shell:iosSimulatorArm64Test \
+            :implementation:iosSimulatorArm64Test | tee ios-test.log
+          if grep -Eq '^> Task :ios:shell:iosSimulatorArm64Test (SKIPPED|NO-SOURCE)' ios-test.log; then
+            echo '::error::iOS client tests were skipped.'
+            exit 1
+          fi
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          for module in ('ios/shell', 'implementation'):
+              files = glob.glob(f'{module}/build/test-results/iosSimulatorArm64Test/TEST-*.xml')
+              assert files, f'No iOS test results for {module}'
+              roots = [ET.parse(p).getroot() for p in files]
+              assert sum(int(r.get('tests', 0)) for r in roots) > 0
+              assert all(int(r.get('failures', 0)) == 0 and int(r.get('errors', 0)) == 0 for r in roots)
+          PY
+
+      - name: Generate iOS version
+        run: ./gradlew --console=plain --no-daemon --max-workers=2 :ios:shell:generateIosVersionXcconfig
+
+      - name: Archive AAPSClient for iPhone
+        run: |
+          set -euo pipefail
+          xcodebuild -project ios/app/AAPSClient.xcodeproj \
+            -scheme AAPSClient -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/AAPSClient.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' \
+            archive | tee archive.log
+
+      - name: Package and verify unsigned IPA
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/AAPSClient.xcarchive/Products/Applications/AAPSClient.app"
+          test -d "$APP"
+          EXECUTABLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")
+          xcrun lipo -verify_arch arm64 "$APP/$EXECUTABLE"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist"
+          file "$APP/$EXECUTABLE"
+          mkdir -p "$RUNNER_TEMP/ipa/Payload" artifacts
+          ditto "$APP" "$RUNNER_TEMP/ipa/Payload/AAPSClient.app"
+          (cd "$RUNNER_TEMP/ipa" && /usr/bin/zip -qry "$GITHUB_WORKSPACE/artifacts/AAPSClient-unsigned.ipa" Payload)
+          unzip -t artifacts/AAPSClient-unsigned.ipa
+          shasum -a 256 artifacts/AAPSClient-unsigned.ipa > artifacts/SHA256SUMS.txt
+          cp LICENSE.txt artifacts/LICENSE.txt
+          {
+            echo 'AAPSClient for iOS — unsigned device build'
+            echo 'Requires iOS 17 or later and personal Apple signing before installation.'
+            echo 'This is the iOS client. It has no direct pump drivers and does not run the AAPS loop.'
+            echo 'Tests passed on the simulator; installation and operation on a physical iPhone are not verified.'
+            echo "Source: https://github.com/$GITHUB_REPOSITORY/tree/$GITHUB_SHA"
+            echo "Build: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } > artifacts/BUILD-INFO.txt
+          echo 'Built AAPSClient-unsigned.ipa. Apple signing is required before installation.' >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AAPSClient-IPA-unsigned
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Keep build logs and test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AAPSClient-build-diagnostics
+          path: |
+            ios-test.log
+            archive.log
+            ios/shell/build/test-results/iosSimulatorArm64Test/
+            implementation/build/test-results/iosSimulatorArm64Test/
+          retention-days: 7
