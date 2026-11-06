@@ -118,13 +118,13 @@ jobs:
           set -euo pipefail
           APP="$RUNNER_TEMP/AAPSClient.xcarchive/Products/Applications/AAPSClient.app"
           test -d "$APP"
-          EXECUTABLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")
-          xcrun lipo -verify_arch arm64 "$APP/$EXECUTABLE"
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist"
-          file "$APP/$EXECUTABLE"
           mkdir -p "$RUNNER_TEMP/ipa/Payload" artifacts
           ditto "$APP" "$RUNNER_TEMP/ipa/Payload/AAPSClient.app"
           (cd "$RUNNER_TEMP/ipa" && /usr/bin/zip -qry "$GITHUB_WORKSPACE/artifacts/AAPSClient-unsigned.ipa" Payload)
+          EXECUTABLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")
+          xcrun lipo "$APP/$EXECUTABLE" -verify_arch arm64
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist"
+          file "$APP/$EXECUTABLE"
           unzip -t artifacts/AAPSClient-unsigned.ipa
           shasum -a 256 artifacts/AAPSClient-unsigned.ipa > artifacts/SHA256SUMS.txt
           cp LICENSE.txt artifacts/LICENSE.txt
@@ -139,6 +139,7 @@ jobs:
           echo 'Built AAPSClient-unsigned.ipa. Apple signing is required before installation.' >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: AAPSClient-IPA-unsigned
           path: artifacts/
