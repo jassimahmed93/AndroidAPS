@@ -1,0 +1,78 @@
+name: Verify AAPSClient on current Apple SDK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths: ['.github/workflows/ios-client-test.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aapsclient-simulator-check
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    env:
+      TZ: Europe/Prague
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+      - name: Verify current Apple SDK is available
+        id: apple
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          SDK=$(xcrun --sdk iphonesimulator --show-sdk-version)
+          echo "Simulator SDK: $SDK"
+          python3 - "$SDK" <<'PY'
+          import sys
+          assert int(sys.argv[1].split('.')[0]) >= 26, 'Use the current Apple SDK, not Xcode 16 SDKs'
+          PY
+          echo "sdk=$SDK" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: ios-test-konan-${{ runner.os }}-${{ runner.arch }}-sdk${{ steps.apple.outputs.sdk }}-${{ hashFiles('gradle/libs.versions.toml') }}
+      - name: Run unchanged iOS client tests
+        run: |
+          set -euo pipefail
+          ./gradlew --console=plain --no-daemon --max-workers=2 \
+            :ios:shell:iosSimulatorArm64Test \
+            :implementation:iosSimulatorArm64Test | tee ios-test.log
+          if grep -Eq '^> Task :ios:shell:iosSimulatorArm64Test (SKIPPED|NO-SOURCE)' ios-test.log; then
+            echo '::error::iOS client tests were skipped.'
+            exit 1
+          fi
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          for module in ('ios/shell', 'implementation'):
+              files = glob.glob(f'{module}/build/test-results/iosSimulatorArm64Test/TEST-*.xml')
+              assert files, f'No iOS test results for {module}'
+              roots = [ET.parse(p).getroot() for p in files]
+              assert sum(int(r.get('tests', 0)) for r in roots) > 0
+              assert all(int(r.get('failures', 0)) == 0 and int(r.get('errors', 0)) == 0 for r in roots)
+          PY
+      - name: Preserve test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AAPSClient-current-SDK-tests
+          path: |
+            ios-test.log
+            ios/shell/build/test-results/iosSimulatorArm64Test/
+            implementation/build/test-results/iosSimulatorArm64Test/
+          retention-days: 7
