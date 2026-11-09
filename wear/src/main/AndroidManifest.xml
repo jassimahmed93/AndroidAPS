@@ -677,6 +677,27 @@
         </service>
 
         <service
+            android:name=".complications.RunningModeColorComplication"
+            android:exported="true"
+            android:icon="@drawable/ic_loop_closed_white"
+            android:label="@string/label_running_mode_color_title"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.support.wearable.complications.SUPPORTED_TYPES"
+                android:value="SMALL_IMAGE" />
+            <meta-data
+                android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
+                android:value="300" />
+            <meta-data
+                android:name="android.support.wearable.complications.SAFE_WATCH_FACES"
+                android:value="${applicationId}.watchfacepush.wfs,${applicationId}.watchfacepush.cwf" />
+        </service>
+
+        <service
             android:name=".complications.UploaderBatteryComplication"
             android:exported="true"
             android:icon="@drawable/ic_battery_charging_wireless_50"
