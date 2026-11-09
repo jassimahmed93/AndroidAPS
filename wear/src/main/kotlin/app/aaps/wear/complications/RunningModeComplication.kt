@@ -23,6 +23,7 @@ import app.aaps.wear.interaction.actions.LoopLgsColor
 import app.aaps.wear.interaction.actions.LoopOpenColor
 import app.aaps.wear.interaction.actions.LoopSuperbolusColor
 import app.aaps.wear.interaction.actions.LoopUnknownColor
+import dev.zacsweers.metro.HasMemberInjections
 import app.aaps.wear.data.ComplicationData as ComplicationStore
 
 /**
@@ -38,6 +39,7 @@ import app.aaps.wear.data.ComplicationData as ComplicationStore
  *
  * Image-only by design: no text and no remaining duration — the loop status screen has those.
  */
+@HasMemberInjections
 open class RunningModeComplication : ModernBaseComplicationProviderService() {
 
     /** Icon, color and accessibility label for one running mode. */
