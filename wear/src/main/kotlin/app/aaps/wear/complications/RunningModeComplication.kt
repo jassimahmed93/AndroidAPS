@@ -38,7 +38,7 @@ import app.aaps.wear.data.ComplicationData as ComplicationStore
  *
  * Image-only by design: no text and no remaining duration — the loop status screen has those.
  */
-class RunningModeComplication : ModernBaseComplicationProviderService() {
+open class RunningModeComplication : ModernBaseComplicationProviderService() {
 
     /** Icon, color and accessibility label for one running mode. */
     private data class ModeAppearance(
