@@ -24,6 +24,7 @@ import app.aaps.wear.complications.IobIconComplication
 import app.aaps.wear.complications.LongStatusComplication
 import app.aaps.wear.complications.LongStatusFlippedComplication
 import app.aaps.wear.complications.RunningModeComplication
+import app.aaps.wear.complications.RunningModeColorComplication
 import app.aaps.wear.complications.SgvComplication
 import app.aaps.wear.complications.SgvComplicationExt1
 import app.aaps.wear.complications.SgvComplicationExt2
@@ -481,6 +482,12 @@ object WearMemberInjectors {
     @IntoMap
     @ClassKey(UploaderBatteryComplication::class)
     fun bindUploaderBatteryComplication(injector: MembersInjector<UploaderBatteryComplication>): MembersInjector<*> = injector
+
+    @Provides
+    @FeatureMemberInjectors
+    @IntoMap
+    @ClassKey(RunningModeColorComplication::class)
+    fun bindRunningModeColorComplication(injector: MembersInjector<RunningModeColorComplication>): MembersInjector<*> = injector
 
     @Provides
     @FeatureMemberInjectors
